@@ -238,14 +238,35 @@ class CashController extends Controller
             return !is_null($doc->expense_payment_id);
         })->map->expense_payment;
 
-        // Inicialización de $methods_payment.
+        // Inicialización de $methods_payment con todos los métodos disponibles
         $methods_payment = PaymentMethodType::all()->map(function($row) {
             return (object)[
                 'id' => $row->id,
                 'name' => $row->description,
-                'sum' => 0
+                'sum' => 0,
+                'transaction_count' => 0
             ];
         });
+
+        // Calcular totales por método de pago desde los documentos de caja
+        $cash_documents = $cash->cash_documents()->with(['document_pos.payments'])->get();
+        
+        foreach ($cash_documents as $cash_document) {
+            if ($cash_document->document_pos) {
+                $document_pos = $cash_document->document_pos;
+                
+                // Solo procesar documentos que no estén anulados
+                if ($document_pos->state_type_id != '11' && $document_pos->payments) {
+                    foreach ($document_pos->payments as $payment) {
+                        $method = $methods_payment->firstWhere('id', $payment->payment_method_type_id);
+                        if ($method) {
+                            $method->sum += $payment->payment ?? 0;
+                            $method->transaction_count++;
+                        }
+                    }
+                }
+            }
+        }
 
         // Se recuperan las categorías
         $categories = Category::all()->pluck('name', 'id');

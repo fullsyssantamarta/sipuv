@@ -37,10 +37,53 @@
                     <div class="col-md-3">
                         <div class="form-group" :class="{'has-danger': errors.unit_price}">
                             <label class="control-label">Precio Unitario</label>
-                            <el-input v-model="form.unit_price">
+                            <el-input v-model="form.unit_price" 
+                                     @input="validateUnitPrice"
+                                     :class="{'unit-price-warning': unit_price_warning}">
                                 <template slot="prepend" v-if="form.item.currency_type_symbol">{{ form.item.currency_type_symbol }}</template>
                             </el-input>
                             <small class="form-control-feedback" v-if="errors.unit_price" v-text="errors.unit_price[0]"></small>
+                        </div>
+                    </div>
+                    
+                    <!-- Precio de Venta -->
+                    <div class="col-md-3" v-if="form.item_id">
+                        <div class="form-group" :class="{'has-danger': errors.sale_unit_price}">
+                            <label class="control-label">
+                                Precio de Venta
+                                <el-button v-if="form.unit_price > 0" type="text" size="mini" @click="calculateSuggestedSalePrice">
+                                    <i class="fa fa-calculator"></i>
+                                </el-button>
+                            </label>
+                            <el-input v-model="form.sale_unit_price" @input="validateSalePrice" @blur="updateItemSalePrice">
+                                <template slot="prepend" v-if="form.item.currency_type_symbol">{{ form.item.currency_type_symbol }}</template>
+                            </el-input>
+                            <small class="form-control-feedback" v-if="errors.sale_unit_price" v-text="errors.sale_unit_price[0]"></small>
+                            <small class="text-muted" v-if="profit_margin_info.show">
+                                Margen: {{ profit_margin_info.percentage }}% | Ganancia: {{ form.item.currency_type_symbol }}{{ profit_margin_info.profit }}
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <!-- Información del promedio ponderado -->
+                    <div class="col-md-6" v-if="weighted_average_info.show">
+                        <div class="form-group">
+                            <label class="control-label">Información de Costos</label>
+                            <div class="weighted-average-info">
+                                <small class="text-muted d-block">
+                                    <strong>Promedio Ponderado:</strong> {{ weighted_average_info.currency_symbol }}{{ weighted_average_info.weighted_average_cost }}
+                                </small>
+                                <small class="text-muted d-block">
+                                    <strong>Última Compra:</strong> {{ weighted_average_info.currency_symbol }}{{ weighted_average_info.last_purchase_price }}
+                                </small>
+                                <small class="text-muted d-block">
+                                    <strong>Total Compras:</strong> {{ weighted_average_info.total_purchases }} 
+                                    ({{ weighted_average_info.total_quantity }} unidades)
+                                </small>
+                                <small class="text-warning d-block" v-if="unit_price_warning">
+                                    <i class="fa fa-warning"></i> Precio por debajo del promedio ponderado
+                                </small>
+                            </div>
                         </div>
                     </div>
                     <div class="col-md-6">
@@ -144,6 +187,9 @@
             </div>
             <div class="form-actions text-right pt-2">
                 <el-button @click.prevent="close()">Cerrar</el-button>
+                <el-button v-if="weighted_average_info.show && form.unit_price > 0" type="info" @click="updateSalePrice" size="small">
+                    <i class="fa fa-calculator"></i> Calcular PV
+                </el-button>
                 <el-button type="primary" native-type="submit" :disabled="!form.item_id">{{titleAction}}</el-button>
             </div>
         </form>
@@ -169,6 +215,28 @@
 }
 .input-with-select .el-select .el-input .el-input__inner {
     padding-right: 10px;
+}
+
+/* Estilos para la información del promedio ponderado */
+.weighted-average-info {
+    border: 1px solid #e4e7ed;
+    border-radius: 4px;
+    padding: 10px;
+    background-color: #f9f9f9;
+}
+
+.weighted-average-info small {
+    line-height: 1.5;
+    margin-bottom: 2px;
+}
+
+.weighted-average-info .text-warning {
+    color: #e6a23c !important;
+    font-weight: 500;
+}
+
+.unit-price-warning {
+    border-color: #e6a23c !important;
 }
 </style>
 <script>
@@ -202,6 +270,21 @@
                 all_taxes:[],
                 taxes:[],
                 titleAction: '',
+                weighted_average_info: {
+                    show: false,
+                    weighted_average_cost: 0,
+                    last_purchase_price: 0,
+                    total_purchases: 0,
+                    total_quantity: 0,
+                    currency_symbol: 'S/',
+                    loading: false
+                },
+                unit_price_warning: false,
+                profit_margin_info: {
+                    show: false,
+                    percentage: 0,
+                    profit: 0
+                },
             }
         },
         computed: {
@@ -245,6 +328,7 @@
                     item: {},
                     quantity: 1,
                     unit_price: 0,
+                    sale_unit_price: 0,
                     item_unit_types: [],
                     lot_code:null,
                     date_of_due: null,
@@ -264,6 +348,23 @@
                 this.item_unit_type = {};
                 this.lots = []
                 this.lot_code = null
+                
+                // Reset weighted average info
+                this.weighted_average_info = {
+                    show: false,
+                    weighted_average_cost: 0,
+                    last_purchase_price: 0,
+                    total_purchases: 0,
+                    total_quantity: 0,
+                    currency_symbol: 'S/',
+                    loading: false
+                };
+                this.unit_price_warning = false;
+                this.profit_margin_info = {
+                    show: false,
+                    percentage: 0,
+                    profit: 0
+                };
             },
             async create() {
                 this.titleDialog = (this.recordItem) ? ' Editar Producto o Servicio' : ' Agregar Producto o Servicio';
@@ -282,6 +383,9 @@
                     } else {
                         this.form.discount = this.recordItem.discount
                     }
+                    
+                    // Calcular margen después de cargar los precios
+                    this.calculateProfitMargin()
                 }
             },
             close() {
@@ -316,11 +420,18 @@
 
                 this.form.item = _.find(this.items, {'id': this.form.item_id})
                 this.form.unit_price = this.form.item.purchase_unit_price
+                this.form.sale_unit_price = this.form.item.sale_unit_price || 0
                 // this.form.affectation_igv_type_id = this.form.item.purchase_affectation_igv_type_id
                 this.form.item_unit_types = _.find(this.items, {'id': this.form.item_id}).item_unit_types
 
                 this.form.unit_type_id = this.form.item.unit_type_id
                 this.form.tax_id = (this.taxes.length > 0) ? this.form.item.purchase_tax_id: null
+
+                // Cargar información del promedio ponderado
+                this.loadWeightedAverageInfo()
+                
+                // Calcular margen de ganancia si ambos precios están disponibles
+                this.calculateProfitMargin()
 
             },
             async clickAddItem() {
@@ -343,6 +454,26 @@
 
                     if(this.lots.length != this.form.quantity)
                         return this.$message.error('La cantidad de series registradas son diferentes al stock');
+                }
+
+                // Validación del precio mínimo basado en promedio ponderado
+                if (this.unit_price_warning && this.weighted_average_info.show) {
+                    const currentPrice = parseFloat(this.form.unit_price);
+                    const averageCost = parseFloat(this.weighted_average_info.weighted_average_cost);
+                    
+                    try {
+                        await this.$confirm(
+                            `El precio ingresado (${this.weighted_average_info.currency_symbol}${currentPrice}) está por debajo del promedio ponderado (${this.weighted_average_info.currency_symbol}${averageCost}). ¿Desea continuar?`,
+                            'Precio por debajo del promedio',
+                            {
+                                confirmButtonText: 'Sí, continuar',
+                                cancelButtonText: 'Cancelar',
+                                type: 'warning'
+                            }
+                        );
+                    } catch (error) {
+                        return; // Usuario canceló
+                    }
                 }
 
                 let date_of_due = this.form.date_of_due
@@ -389,6 +520,228 @@
                     // this.filterItems()
 
                 })
+            },
+            
+            /**
+             * Cargar información del promedio ponderado de compras
+             */
+            async loadWeightedAverageInfo() {
+                if (!this.form.item_id) return;
+                
+                this.weighted_average_info.loading = true;
+                this.weighted_average_info.show = false;
+                
+                try {
+                    const response = await this.$http.get(`/purchases/weighted-average-cost/${this.form.item_id}`);
+                    
+                    if (response.data.success) {
+                        this.weighted_average_info = {
+                            ...this.weighted_average_info,
+                            ...response.data,
+                            show: true,
+                            loading: false
+                        };
+                        
+                        // Validar el precio actual
+                        this.validateUnitPrice();
+                    } else {
+                        this.weighted_average_info.show = false;
+                        this.weighted_average_info.loading = false;
+                    }
+                } catch (error) {
+                    console.error('Error cargando promedio ponderado:', error);
+                    this.weighted_average_info.show = false;
+                    this.weighted_average_info.loading = false;
+                }
+            },
+            
+            /**
+             * Validar precio unitario contra el promedio ponderado
+             */
+            validateUnitPrice() {
+                if (!this.weighted_average_info.show || !this.form.unit_price) {
+                    this.unit_price_warning = false;
+                } else {
+                    const currentPrice = parseFloat(this.form.unit_price);
+                    const averageCost = parseFloat(this.weighted_average_info.weighted_average_cost);
+                    
+                    // Mostrar advertencia si el precio está por debajo del promedio ponderado
+                    this.unit_price_warning = currentPrice < averageCost && averageCost > 0;
+                }
+                
+                // Recalcular margen de ganancia al cambiar precio de compra
+                this.calculateProfitMargin();
+                
+                // Opcional: Prevenir precios por debajo del promedio (descomenta si deseas esta funcionalidad)
+                // if (this.unit_price_warning) {
+                //     this.$message.warning(`El precio está por debajo del promedio ponderado (${this.weighted_average_info.currency_symbol}${averageCost})`);
+                // }
+            },
+            
+            /**
+             * Actualizar precio de venta basado en el costo
+             */
+            async updateSalePrice() {
+                if (!this.form.item_id || !this.form.unit_price) {
+                    this.$message.error('Seleccione un producto y establezca un precio de compra');
+                    return;
+                }
+                
+                try {
+                    // Mostrar diálogo para confirmar el margen de ganancia
+                    const { value: profitMargin } = await this.$prompt('Ingrese el porcentaje de ganancia deseado:', 'Actualizar Precio de Venta', {
+                        confirmButtonText: 'Actualizar',
+                        cancelButtonText: 'Cancelar',
+                        inputValue: '30',
+                        inputPattern: /^\d+(\.\d{1,2})?$/,
+                        inputErrorMessage: 'Ingrese un porcentaje válido'
+                    });
+                    
+                    if (!profitMargin) return;
+                    
+                    const purchasePrice = parseFloat(this.form.unit_price);
+                    const margin = parseFloat(profitMargin);
+                    const newSalePrice = purchasePrice * (1 + (margin / 100));
+                    
+                    // Confirmar la actualización
+                    const confirmResult = await this.$confirm(
+                        `¿Confirma actualizar el precio de venta a ${this.weighted_average_info.currency_symbol}${newSalePrice.toFixed(2)}?`,
+                        'Confirmar Actualización',
+                        {
+                            confirmButtonText: 'Sí, actualizar',
+                            cancelButtonText: 'Cancelar',
+                            type: 'question'
+                        }
+                    );
+                    
+                    if (confirmResult !== 'confirm') return;
+                    
+                    // Actualizar en el backend
+                    const response = await this.$http.post('/purchases/update-sale-price', {
+                        item_id: this.form.item_id,
+                        purchase_price: purchasePrice,
+                        profit_margin: margin
+                    });
+                    
+                    if (response.data.success) {
+                        this.$message.success(`Precio de venta actualizado: ${this.weighted_average_info.currency_symbol}${response.data.data.sale_unit_price}`);
+                        
+                        // Actualizar el item en el formulario si es necesario
+                        if (this.form.item) {
+                            this.form.item.sale_unit_price = response.data.data.sale_unit_price;
+                            this.form.item.purchase_unit_price = response.data.data.purchase_unit_price;
+                            this.form.item.percentage_of_profit = response.data.data.percentage_of_profit;
+                        }
+                    } else {
+                        this.$message.error(response.data.message || 'Error al actualizar el precio de venta');
+                    }
+                    
+                } catch (error) {
+                    if (error === 'cancel') {
+                        // Usuario canceló la operación
+                        return;
+                    }
+                    console.error('Error actualizando precio de venta:', error);
+                    this.$message.error('Error al actualizar el precio de venta');
+                }
+            },
+            
+            /**
+             * Calcular precio de venta sugerido basado en un margen
+             */
+            async calculateSuggestedSalePrice() {
+                if (!this.form.unit_price || this.form.unit_price <= 0) {
+                    this.$message.error('Establezca primero un precio de compra válido');
+                    return;
+                }
+                
+                try {
+                    const { value: profitMargin } = await this.$prompt('Ingrese el porcentaje de ganancia deseado:', 'Calcular Precio de Venta', {
+                        confirmButtonText: 'Calcular',
+                        cancelButtonText: 'Cancelar',
+                        inputValue: '30',
+                        inputPattern: /^\d+(\.\d{1,2})?$/,
+                        inputErrorMessage: 'Ingrese un porcentaje válido'
+                    });
+                    
+                    if (!profitMargin) return;
+                    
+                    const purchasePrice = parseFloat(this.form.unit_price);
+                    const margin = parseFloat(profitMargin);
+                    const suggestedPrice = purchasePrice * (1 + (margin / 100));
+                    
+                    this.form.sale_unit_price = suggestedPrice.toFixed(2);
+                    this.calculateProfitMargin();
+                    
+                    this.$message.success(`Precio sugerido: ${this.form.item.currency_type_symbol || 'S/'}${suggestedPrice.toFixed(2)}`);
+                    
+                } catch (error) {
+                    // Usuario canceló
+                }
+            },
+            
+            /**
+             * Validar y calcular margen al cambiar precio de venta
+             */
+            validateSalePrice() {
+                this.calculateProfitMargin();
+            },
+            
+            /**
+             * Calcular información del margen de ganancia
+             */
+            calculateProfitMargin() {
+                const purchasePrice = parseFloat(this.form.unit_price) || 0;
+                const salePrice = parseFloat(this.form.sale_unit_price) || 0;
+                
+                if (purchasePrice > 0 && salePrice > 0) {
+                    const profit = salePrice - purchasePrice;
+                    const percentage = ((profit / purchasePrice) * 100);
+                    
+                    this.profit_margin_info = {
+                        show: true,
+                        percentage: percentage.toFixed(2),
+                        profit: profit.toFixed(2)
+                    };
+                } else {
+                    this.profit_margin_info.show = false;
+                }
+            },
+            
+            /**
+             * Actualizar precio de venta en el item cuando se pierde el foco
+             */
+            async updateItemSalePrice() {
+                if (!this.form.item_id || !this.form.sale_unit_price) return;
+                
+                try {
+                    const response = await this.$http.post('/purchases/update-sale-price', {
+                        item_id: this.form.item_id,
+                        sale_unit_price: parseFloat(this.form.sale_unit_price),
+                        purchase_price: parseFloat(this.form.unit_price) || 0
+                    });
+                    
+                    if (response.data.success) {
+                        // Actualizar el item en memoria
+                        if (this.form.item) {
+                            this.form.item.sale_unit_price = response.data.data.sale_unit_price;
+                            this.form.item.purchase_unit_price = response.data.data.purchase_unit_price || this.form.item.purchase_unit_price;
+                            this.form.item.percentage_of_profit = response.data.data.percentage_of_profit;
+                        }
+                        
+                        // Actualizar también en la lista de items para futuras selecciones
+                        const itemIndex = this.items.findIndex(item => item.id === this.form.item_id);
+                        if (itemIndex !== -1) {
+                            this.items[itemIndex].sale_unit_price = response.data.data.sale_unit_price;
+                            this.items[itemIndex].percentage_of_profit = response.data.data.percentage_of_profit;
+                        }
+                        
+                        this.$message.success('Precio de venta actualizado correctamente');
+                    }
+                } catch (error) {
+                    console.error('Error actualizando precio de venta:', error);
+                    this.$message.error('Error al actualizar el precio de venta');
+                }
             },
         }
     }

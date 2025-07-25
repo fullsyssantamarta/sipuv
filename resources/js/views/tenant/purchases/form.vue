@@ -1,7 +1,32 @@
 <template>
     <div class="card mb-0 pt-2 pt-md-0">
-        <div class="card-header bg-info">
+        <div class="card-header bg-info d-flex justify-content-between align-items-center">
             <h3 class="my-0">Nueva Compra</h3>
+            <div class="d-flex align-items-center">
+                <div v-if="draftRestored" class="mr-3">
+                    <span class="badge badge-warning mr-2">Borrador restaurado</span>
+                    <button type="button" 
+                            class="btn btn-sm btn-outline-light mr-2" 
+                            @click="forceSaveDraft()"
+                            title="Guardar borrador manualmente">
+                        <i class="fa fa-save"></i> Guardar
+                    </button>
+                    <button type="button" 
+                            class="btn btn-sm btn-outline-light" 
+                            @click="confirmClearDraft()"
+                            title="Limpiar borrador guardado">
+                        <i class="fa fa-trash"></i> Limpiar
+                    </button>
+                </div>
+                <div v-else-if="form.items && form.items.length > 0" class="mr-3">
+                    <button type="button" 
+                            class="btn btn-sm btn-outline-light" 
+                            @click="forceSaveDraft()"
+                            title="Guardar borrador manualmente">
+                        <i class="fa fa-save"></i> Guardar borrador
+                    </button>
+                </div>
+            </div>
         </div>
         <div class="card-body">
             <form autocomplete="off" @submit.prevent="submit">
@@ -357,6 +382,18 @@
         props:['purchase_order_id'],
         components: {PurchaseFormItem, PersonForm, PurchaseOptions},
         mixins: [functions, exchangeRate],
+        watch: {
+            // Auto-save form changes to localStorage
+            form: {
+                handler(newForm) {
+                    // Don't autosave during initial data load or when restoring draft
+                    if (this.draftRestored !== null && this.form.items && this.form.items.length >= 0) {
+                        this.debouncedAutosave();
+                    }
+                },
+                deep: true
+            }
+        },
         data() {
             return {
                 currencies: [],
@@ -395,6 +432,10 @@
                 dialogRetention: false,
                 retention_taxes: [],
                 recordItem: null,
+                // Cache properties
+                cacheKey: 'purchase_draft',
+                autosaveDebounce: null,
+                draftRestored: null,
             }
         },
         async created() {
@@ -426,10 +467,19 @@
 
             this.$eventHub.$on('reloadDataPersons', (supplier_id) => {
                 this.reloadDataSuppliers(supplier_id)
-           })
+            })
 
             this.$eventHub.$on('initInputPerson', () => {
                 this.initInputPerson()
+            })
+
+            // Enhanced events for cache management
+            this.$eventHub.$on('savePurchaseDraft', () => {
+                this.saveDraftToCache()
+            })
+
+            this.$eventHub.$on('clearPurchaseDraft', () => {
+                this.clearDraftFromCache()
             })
 
             await this.filterCustomers()
@@ -437,6 +487,17 @@
             await this.changeHasPayment()
             await this.changeHasClient()
             this.retentiontaxes()
+            
+            // Load draft after initialization if no purchase order is being generated
+            if (!this.purchase_order_id) {
+                this.loadDraftFromCache()
+            }
+        },
+        beforeDestroy() {
+            // Clean up timeout to prevent memory leaks
+            if (this.autosaveDebounce) {
+                clearTimeout(this.autosaveDebounce);
+            }
         },
         methods: {
             setDataTotals() {
@@ -572,6 +633,120 @@
                 if ((tax != null) && (!tax.is_fixed_value)) return null;
 
                 return (this.company.currency != null) ? this.company.currency.symbol : '$';
+            },
+            // Cache management methods - Enhanced with POS patterns
+            debouncedAutosave() {
+                clearTimeout(this.autosaveDebounce);
+                this.autosaveDebounce = setTimeout(() => {
+                    this.saveDraftToCache();
+                }, 1000); // Save after 1 second of inactivity
+            },
+            saveDraftToCache() {
+                try {
+                    // Only save if form has meaningful data (items or supplier selected)
+                    if (this.form.items.length > 0 || this.form.supplier_id) {
+                        this.setLocalStorageIndex(this.cacheKey, {
+                            form: this.form,
+                            timestamp: new Date().toISOString(),
+                            version: '1.0'
+                        });
+                    }
+                } catch (error) {
+                    console.warn('Error saving purchase draft:', error);
+                }
+            },
+            loadDraftFromCache() {
+                try {
+                    const draftData = this.getLocalStorageIndex(this.cacheKey);
+                    if (draftData) {
+                        // Check if draft is not too old (24 hours)
+                        const draftAge = new Date() - new Date(draftData.timestamp);
+                        const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+                        
+                        if (draftAge <= maxAge && draftData.form) {
+                            // Restore form data
+                            this.form = { ...this.form, ...draftData.form };
+                            this.draftRestored = true;
+                            
+                            // Recalculate totals
+                            this.calculateTotal();
+                            
+                            // Show notification
+                            this.$message({
+                                message: 'Se ha restaurado un borrador de compra guardado automáticamente',
+                                type: 'info',
+                                duration: 4000,
+                                showClose: true
+                            });
+                        } else {
+                            // Remove old draft
+                            this.clearDraftFromCache();
+                            this.draftRestored = false;
+                        }
+                    } else {
+                        this.draftRestored = false;
+                    }
+                } catch (error) {
+                    console.warn('Error loading purchase draft:', error);
+                    this.clearDraftFromCache();
+                    this.draftRestored = false;
+                }
+            },
+            clearDraftFromCache() {
+                try {
+                    this.setLocalStorageIndex(this.cacheKey, null);
+                } catch (error) {
+                    console.warn('Error clearing purchase draft:', error);
+                }
+            },
+            // Generic localStorage methods (inspired by POS)
+            getLocalStorageIndex(key, defaultValue = null) {
+                try {
+                    let data = localStorage.getItem(key);
+                    data = JSON.parse(data);
+                    return data || defaultValue;
+                } catch (error) {
+                    console.warn(`Error getting localStorage key ${key}:`, error);
+                    return defaultValue;
+                }
+            },
+            setLocalStorageIndex(key, value) {
+                try {
+                    localStorage.setItem(key, JSON.stringify(value));
+                } catch (error) {
+                    console.warn(`Error setting localStorage key ${key}:`, error);
+                }
+            },
+            // Manual save method (useful for specific triggers)
+            forceSaveDraft() {
+                this.saveDraftToCache();
+                this.$message({
+                    type: 'success',
+                    message: 'Borrador guardado manualmente',
+                    duration: 2000
+                });
+            },
+            confirmClearDraft() {
+                this.$confirm('¿Estás seguro de que deseas limpiar el borrador guardado?', 'Limpiar borrador', {
+                    confirmButtonText: 'Sí, limpiar',
+                    cancelButtonText: 'Cancelar',
+                    type: 'warning'
+                }).then(() => {
+                    // Clear draft and reset form
+                    this.clearDraftFromCache();
+                    this.resetForm();
+                    this.draftRestored = false;
+                    
+                    // Emit event for other components (if needed)
+                    this.$eventHub.$emit('purchaseDraftCleared');
+                    
+                    this.$message({
+                        type: 'success',
+                        message: 'Borrador limpiado correctamente'
+                    });
+                }).catch(() => {
+                    // User cancelled
+                });
             },
             changeHasPayment(){
 
@@ -848,6 +1023,7 @@
             },
             resetForm() {
                 this.initForm()
+                this.draftRestored = false;
 
                 let find_currency = _.find(this.currencies, {id:170})
                 this.form.currency_id = find_currency ? find_currency.id: null
@@ -960,6 +1136,12 @@
                     .then(response => {
 
                         if (response.data.success) {
+                            
+                            // Clear draft from cache on successful submission
+                            this.clearDraftFromCache();
+                            
+                            // Emit success event for other components
+                            this.$eventHub.$emit('purchaseSuccess', response.data.data);
 
                             if(this.purchase_order_id){
 
