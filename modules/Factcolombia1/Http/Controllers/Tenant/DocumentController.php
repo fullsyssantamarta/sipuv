@@ -2800,4 +2800,99 @@ class DocumentController extends Controller
            //'data' => $data_document
         ];
     }
+
+    /**
+     * Validar stock de un producto antes de agregarlo a la factura
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function validateStock(Request $request)
+    {
+        try {
+            $item_id = $request->input('item_id');
+            $quantity = floatval($request->input('quantity', 0));
+            
+            if (!$item_id || $quantity <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Datos inválidos para la validación de stock.'
+                ]);
+            }
+
+            // Obtener configuración de inventario
+            $inventory_configuration = \Modules\Inventory\Models\InventoryConfiguration::first();
+            
+            // Si no hay control de stock habilitado, permitir la operación
+            if (!$inventory_configuration || !$inventory_configuration->stock_control) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Control de stock no habilitado.'
+                ]);
+            }
+
+            // Obtener almacén del establecimiento
+            $warehouse = \App\Models\Tenant\Warehouse::where('establishment_id', auth()->user()->establishment_id)->first();
+            
+            if (!$warehouse) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No hay almacén configurado.'
+                ]);
+            }
+
+            $item = \App\Models\Tenant\Item::find($item_id);
+            
+            if (!$item) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Producto no encontrado.'
+                ]);
+            }
+
+            // Solo validar stock para productos físicos (no servicios)
+            if ($item->unit_type_id === 'ZZ') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Producto es un servicio, no requiere validación de stock.'
+                ]);
+            }
+
+            $item_warehouse = \App\Models\Tenant\ItemWarehouse::where([
+                ['item_id', $item_id], 
+                ['warehouse_id', $warehouse->id]
+            ])->first();
+
+            if (!$item_warehouse) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "El producto '{$item->description}' no está disponible en el almacén."
+                ]);
+            }
+
+            $available_stock = $item_warehouse->stock;
+            
+            if ($available_stock < $quantity) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "El producto '{$item->description}' no tiene suficiente stock. Stock disponible: {$available_stock}, cantidad solicitada: {$quantity}"
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Stock suficiente disponible.',
+                'data' => [
+                    'available_stock' => $available_stock,
+                    'requested_quantity' => $quantity
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al validar el stock: ' . $e->getMessage()
+            ]);
+        }
+    }
 }

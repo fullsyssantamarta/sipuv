@@ -14,6 +14,9 @@ use Modules\Factcolombia1\Models\Tenant\{
 };
 use Modules\Finance\Traits\FinanceTrait;
 use Exception;
+use App\Models\Tenant\Warehouse;
+use App\Models\Tenant\ItemWarehouse;
+use Modules\Inventory\Models\InventoryConfiguration;
 
 
 class DocumentHelper
@@ -21,6 +24,64 @@ class DocumentHelper
     use FinanceTrait;
 
     protected $apply_change;
+
+    /**
+     * Valida el stock disponible para los items de la factura
+     * 
+     * @param array $items
+     * @param int $establishment_id
+     * @throws Exception
+     */
+    private static function validateStock($items, $establishment_id)
+    {
+        // Obtener configuración de inventario
+        $inventory_configuration = InventoryConfiguration::first();
+        
+        // Si no hay control de stock habilitado, no validar
+        if (!$inventory_configuration || !$inventory_configuration->stock_control) {
+            return;
+        }
+
+        // Obtener almacén del establecimiento
+        $warehouse = Warehouse::where('establishment_id', $establishment_id)->first();
+        
+        if (!$warehouse) {
+            return; // Si no hay almacén configurado, no validar stock
+        }
+
+        foreach ($items as $item) {
+            $item_id = key_exists('item_id', $item) ? $item['item_id'] : null;
+            $quantity = floatval(key_exists('quantity', $item) ? $item['quantity'] : (key_exists('invoiced_quantity', $item) ? $item['invoiced_quantity'] : 0));
+            
+            // Si no hay item_id, buscar por código interno
+            if (!$item_id && isset($item['code'])) {
+                $record_item = Item::where('internal_id', $item['code'])->first();
+                $item_id = $record_item ? $record_item->id : null;
+            }
+
+            if ($item_id && $quantity > 0) {
+                $item_record = Item::find($item_id);
+                
+                // Solo validar stock para productos físicos (no servicios)
+                if ($item_record && $item_record->unit_type_id !== 'ZZ') {
+                    $item_warehouse = ItemWarehouse::where([
+                        ['item_id', $item_id], 
+                        ['warehouse_id', $warehouse->id]
+                    ])->first();
+
+                    if (!$item_warehouse) {
+                        throw new Exception("El producto '{$item_record->description}' no está disponible en el almacén.");
+                    }
+
+                    $available_stock = $item_warehouse->stock;
+                    
+                    if ($available_stock < $quantity) {
+                        throw new Exception("El producto '{$item_record->description}' no tiene suficiente stock. Stock disponible: {$available_stock}, cantidad solicitada: {$quantity}");
+                    }
+                }
+            }
+        }
+    }
 
     public static function createDocument($request, $nextConsecutive, $correlative_api, $company, $response, $response_status, $type_environment_id)
     {
@@ -91,6 +152,10 @@ class DocumentHelper
             \Log::debug($e->getMessage());
         }
 //\Log::debug("4.4");
+
+        // Validar stock antes de procesar los items
+        self::validateStock($request->items, auth()->user()->establishment_id);
+
         $existen_items = $document->items;
         $existen_items->each->delete();
 //\Log::debug("5");

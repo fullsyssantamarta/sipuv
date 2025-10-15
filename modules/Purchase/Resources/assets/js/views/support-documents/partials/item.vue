@@ -320,7 +320,7 @@
                 // this.form.tax_id = (this.taxes.length > 0) ? this.form.item.tax.id: null
                 this.form.tax_id = 8 // se asigna excento por defecto
 
-                this.form.price = this.form.item.sale_unit_price;
+                this.form.price = _.round(this.form.item.sale_unit_price, 0);
 
                 this.form.quantity = 1;
                 this.cleanTotalItem();

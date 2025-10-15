@@ -81,6 +81,10 @@ class ReportItemSoldController extends Controller
      */
     public function pdf(Request $request)
     {
+        // Aumentar tiempo de ejecución para reportes grandes
+        set_time_limit(300); // 5 minutos
+        ini_set('memory_limit', '512M');
+        
         $records = $this->getQueryRecords($request);
         $filters = $request;
         $company = Company::first();

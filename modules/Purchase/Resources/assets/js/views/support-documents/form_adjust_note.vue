@@ -296,7 +296,7 @@
                 this.showDialogAddItem = true
             },
             getFormatUnitPriceRow(unit_price){
-                return _.round(unit_price, 6)
+                return _.round(unit_price, 0)
             },
             initForm() {
 

@@ -670,6 +670,23 @@
                 if (this.form.item.purchase_unit_price && parseFloat(this.form.price) < parseFloat(this.form.item.purchase_unit_price)) {
                     return this.$message.error(`El precio de venta (${this.form.price}) no puede ser menor al precio de compra (${this.form.item.purchase_unit_price}). Por favor ajuste el precio.`);
                 }
+
+                // Validación de stock
+                try {
+                    const stockResponse = await this.$http.post('/co-documents/validate-stock', {
+                        item_id: this.form.item_id,
+                        quantity: this.form.quantity
+                    });
+                    
+                    if (!stockResponse.data.success) {
+                        return this.$message.error(stockResponse.data.message);
+                    }
+                } catch (error) {
+                    if (error.response && error.response.data && error.response.data.message) {
+                        return this.$message.error(error.response.data.message);
+                    }
+                    return this.$message.error('Error al validar el stock del producto.');
+                }
                 
                 if(null === this.form.tax_id)
                     this.form.tax = {'code': "ZZ", 'conversion': "100.00", 'id': 0, 'in_base': false, 'in_tax': null, 'is_fixed_value': false, 'is_percentage': true, 'is_retention': false, 'name': "EXCLUIDO", 'rate': "0.00", 'retention': 0, 'total': 0, 'type_tax': {'code': "ZZ", 'description': "Articulos Excluidos de Impuesto", 'id': 99, 'name': "EXCLUIDO"}}

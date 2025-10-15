@@ -213,10 +213,27 @@ class ItemController extends Controller
             $item_unit_type->item_id = $item->id;
             $item_unit_type->description = $value['description'];
             $item_unit_type->unit_type_id = $value['unit_type_id'];
-            $item_unit_type->quantity_unit = $value['quantity_unit'];
-            $item_unit_type->price1 = $value['price1'];
-            $item_unit_type->price2 = $value['price2'];
-            $item_unit_type->price3 = $value['price3'];
+            
+            // Validar y convertir quantity_unit a un número válido
+            if (!is_numeric($value['quantity_unit'])) {
+                Log::warning('Invalid quantity_unit value detected', ['value' => $value['quantity_unit'], 'item_id' => $item->id]);
+            }
+            $item_unit_type->quantity_unit = is_numeric($value['quantity_unit']) ? floatval($value['quantity_unit']) : 1.0;
+            
+            // Validar y convertir precios a números válidos
+            if (!is_numeric($value['price1'])) {
+                Log::warning('Invalid price1 value detected', ['value' => $value['price1'], 'item_id' => $item->id]);
+            }
+            if (!is_numeric($value['price2']) && !empty($value['price2'])) {
+                Log::warning('Invalid price2 value detected', ['value' => $value['price2'], 'item_id' => $item->id]);
+            }
+            if (!is_numeric($value['price3']) && !empty($value['price3'])) {
+                Log::warning('Invalid price3 value detected', ['value' => $value['price3'], 'item_id' => $item->id]);
+            }
+            
+            $item_unit_type->price1 = is_numeric($value['price1']) ? floatval($value['price1']) : 0.0;
+            $item_unit_type->price2 = is_numeric($value['price2']) ? floatval($value['price2']) : 0.0;
+            $item_unit_type->price3 = is_numeric($value['price3']) ? floatval($value['price3']) : 0.0;
             $item_unit_type->price_default = $value['price_default'];
             $item_unit_type->save();
 

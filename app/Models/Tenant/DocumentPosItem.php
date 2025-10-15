@@ -158,6 +158,8 @@ class DocumentPosItem extends ModelTenant
                     'relation_item' => function($query){
                         return $query->select([
                             'id',
+                            'internal_id',
+                            'name',
                             'purchase_unit_price'
                         ]);
                     },

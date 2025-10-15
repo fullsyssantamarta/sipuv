@@ -214,7 +214,7 @@
             changeItem() {
 
                 this.form.item = _.find(this.items, {'id': this.form.item_id})
-                this.form.unit_price = this.form.item.purchase_unit_price
+                this.form.unit_price = _.round(this.form.item.purchase_unit_price, 0)
 
                 this.form.item_unit_types = _.find(this.items, {'id': this.form.item_id}).item_unit_types
 

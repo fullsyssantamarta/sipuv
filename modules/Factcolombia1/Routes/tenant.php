@@ -81,6 +81,7 @@ if ($currentHostname) {
                 Route::post('/documentsAll', 'Tenant\DocumentController@all');
                 Route::post('/documents', 'Tenant\DocumentController@store');
                 Route::post('/documents/note', 'Tenant\DocumentController@storeNote');
+                Route::post('/documents/validate-stock', 'Tenant\DocumentController@validateStock');
 
                 Route::put('/documents/query/{document}', 'Tenant\DocumentController@query');
                 Route::get('/documents/download/{type}/{document}', 'Tenant\DocumentController@download');

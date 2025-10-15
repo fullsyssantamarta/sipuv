@@ -26,6 +26,7 @@ if($current_hostname) {
                 Route::get('search/customer/{id}', 'Tenant\DocumentController@searchCustomerById');
                 Route::get('tables', 'Tenant\DocumentController@tables');
                 Route::post('', 'Tenant\DocumentController@store');
+                Route::post('validate-stock', 'Tenant\DocumentController@validateStock');
                 Route::post('preeliminar-view', 'Tenant\DocumentController@preeliminarview');
                 Route::get('item/tables', 'Tenant\DocumentController@item_tables');
                 Route::get('health/tables', 'Tenant\DocumentController@health_tables');

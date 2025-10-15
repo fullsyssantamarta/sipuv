@@ -67,9 +67,15 @@ class ItemRequest extends FormRequest
             // ],
             // 'brand_id' => [
             //     'required_if:is_set,false',
-            // ],
+            ],
             'tax_id' => 'nullable|exists:tenant.co_taxes,id',
             'purchase_tax_id' => 'required|exists:tenant.co_taxes,id',
+            
+            // Validaciones para item_unit_types
+            'item_unit_types.*.price1' => 'required|numeric|min:0',
+            'item_unit_types.*.price2' => 'nullable|numeric|min:0',
+            'item_unit_types.*.price3' => 'nullable|numeric|min:0',
+            'item_unit_types.*.quantity_unit' => 'required|numeric|min:0.01',
 
         ];
     }
@@ -79,6 +85,13 @@ class ItemRequest extends FormRequest
         return [
             // 'description.required' => 'El campo nombre es obligatorio.',
             'sale_unit_price.gt' => 'El precio unitario de venta debe ser mayor que 0.00 .',
+            'item_unit_types.*.price1.required' => 'El precio 1 es obligatorio para cada unidad de tipo.',
+            'item_unit_types.*.price1.numeric' => 'El precio 1 debe ser un valor numérico.',
+            'item_unit_types.*.price2.numeric' => 'El precio 2 debe ser un valor numérico.',
+            'item_unit_types.*.price3.numeric' => 'El precio 3 debe ser un valor numérico.',
+            'item_unit_types.*.quantity_unit.required' => 'La cantidad de unidad es obligatoria.',
+            'item_unit_types.*.quantity_unit.numeric' => 'La cantidad de unidad debe ser un valor numérico.',
+            'item_unit_types.*.quantity_unit.min' => 'La cantidad de unidad debe ser mayor que 0.',
         ];
     }
 }

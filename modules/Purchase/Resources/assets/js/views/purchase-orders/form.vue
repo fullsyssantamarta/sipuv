@@ -498,8 +498,8 @@
 
             },
             getFormatUnitPriceRow(unit_price){
-                return _.round(unit_price, 6)
-                // return unit_price.toFixed(6)
+                return _.round(unit_price, 0)
+                // return unit_price.toFixed(0)
             },
             onSuccess(response, file, fileList) {
                 // console.log(response, file, fileList)
