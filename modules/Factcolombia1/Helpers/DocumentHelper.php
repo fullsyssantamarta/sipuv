@@ -117,6 +117,17 @@ class DocumentHelper
 //                \Log::debug(2);
                 $exist_record = true;
             }
+            
+            // Validación de precio de venta vs precio de compra
+            if($exist_record && $record_item) {
+                $sale_price = floatval(isset($item['price']) ? $item['price'] : $record_item->sale_unit_price);
+                $purchase_price = floatval($record_item->purchase_unit_price);
+                
+                if($purchase_price > 0 && $sale_price < $purchase_price) {
+                    throw new Exception("El precio de venta ({$sale_price}) no puede ser menor al precio de compra ({$purchase_price}) para el producto: {$record_item->name}");
+                }
+            }
+            
 //            \Log::debug(json_encode($exist_record));
 //            \Log::debug($item);
             if(!$exist_record){

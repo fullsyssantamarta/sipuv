@@ -1094,6 +1094,14 @@ export default {
 
                     let unit_price = exist_item.item.sale_unit_price
 //                    console.log(unit_price)
+                    
+                    // Validar precio de venta vs precio de compra
+                    const purchase_price = parseFloat(exist_item.item.purchase_unit_price) || 0;
+                    if (purchase_price > 0 && parseFloat(exist_item.sale_unit_price_with_tax) < purchase_price) {
+                        this.loading = false;
+                        return this.$message.error(`El precio de venta ($${parseFloat(exist_item.sale_unit_price_with_tax).toFixed(2)}) no puede ser menor al precio de compra ($${purchase_price.toFixed(2)}) del producto: ${exist_item.item.name}`);
+                    }
+                    
                     exist_item.item.unit_price = unit_price
                     exist_item.unit_type_id = item.unit_type_id
                     this.form.items[pos] = exist_item;
@@ -1142,6 +1150,15 @@ export default {
 
                     this.form_item.unit_price = unit_price;
                     this.form_item.item.unit_price = unit_price;
+                    
+                    // Validar precio de venta vs precio de compra
+                    const purchase_price = parseFloat(this.form_item.item.purchase_unit_price) || 0;
+                    const sale_price_to_validate = parseFloat(this.form_item.item.sale_unit_price) || 0;
+                    if (purchase_price > 0 && sale_price_to_validate < purchase_price) {
+                        this.loading = false;
+                        return this.$message.error(`El precio de venta ($${sale_price_to_validate.toFixed(2)}) no puede ser menor al precio de compra ($${purchase_price.toFixed(2)}) del producto: ${this.form_item.item.name}`);
+                    }
+                    
                     // this.form_item.item.presentation = null;
                     // this.form_item.id = this.form_item.item.item_id
                     this.form_item.item_id = this.form_item.item.item_id

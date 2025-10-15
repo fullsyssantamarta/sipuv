@@ -501,5 +501,39 @@ class Item extends ModelTenant
                         ->whereNotItemsAiu();
     }
 
+    /**
+     * Valida que el precio de venta no sea menor al precio de compra
+     *
+     * @param  float $sale_price
+     * @return array
+     */
+    public function validateSalePrice($sale_price)
+    {
+        $purchase_price = (float) $this->purchase_unit_price;
+        $sale_price = (float) $sale_price;
+
+        if ($purchase_price > 0 && $sale_price < $purchase_price) {
+            return [
+                'valid' => false,
+                'message' => "El precio de venta ({$sale_price}) no puede ser menor al precio de compra ({$purchase_price}) para el producto: {$this->name}"
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'message' => ''
+        ];
+    }
+
+    /**
+     * Obtiene el precio de compra del producto
+     *
+     * @return float
+     */
+    public function getPurchasePrice()
+    {
+        return (float) $this->purchase_unit_price;
+    }
+
 
 }
