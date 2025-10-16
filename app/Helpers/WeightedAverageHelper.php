@@ -106,7 +106,7 @@ class WeightedAverageHelper
                 'weighted_average_cost' => $weighted_average_cost,
                 'sale_price' => $sale_price,
                 'difference' => round($weighted_average_cost - $sale_price, 2),
-                'message' => "El precio de venta (S/{$sale_price}) es menor al costo promedio ponderado (S/{$weighted_average_cost}). No se permite generar pérdidas."
+                'message' => "El precio de venta (\${$sale_price}) es menor al costo promedio ponderado (\${$weighted_average_cost}). No se permite generar pérdidas."
             ];
         }
 
@@ -164,7 +164,7 @@ class WeightedAverageHelper
         if (!empty($errors)) {
             $error_messages = [];
             foreach ($errors as $error) {
-                $error_messages[] = "• {$error['item_name']} ({$error['internal_id']}): Precio S/{$error['sale_price']} - Costo promedio S/{$error['weighted_average_cost']} - Diferencia: S/{$error['difference']}";
+                $error_messages[] = "• {$error['item_name']} ({$error['internal_id']}): Precio \${$error['sale_price']} - Costo promedio \${$error['weighted_average_cost']} - Diferencia: \${$error['difference']}";
             }
             
             return [
