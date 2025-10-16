@@ -646,62 +646,7 @@ class PurchaseController extends Controller
      */
     public function getWeightedAverageCost($item_id)
     {
-        try {
-            // Obtener todas las compras del item ordenadas por fecha
-            $purchase_items = PurchaseItem::whereHas('purchase', function($query) {
-                    $query->whereIn('state_type_id', ['05', '09']); // Solo compras procesadas o aceptadas
-                })
-                ->where('item_id', $item_id)
-                ->with(['purchase' => function($query) {
-                    $query->select('id', 'date_of_issue', 'currency_id', 'exchange_rate_sale');
-                }])
-                ->orderBy('id', 'desc')
-                ->get();
-
-            if ($purchase_items->isEmpty()) {
-                return [
-                    'success' => true,
-                    'weighted_average_cost' => 0,
-                    'last_purchase_price' => 0,
-                    'total_purchases' => 0,
-                    'message' => 'No se encontraron compras para este producto'
-                ];
-            }
-
-            $total_cost = 0;
-            $total_quantity = 0;
-            $last_purchase_price = $purchase_items->first()->unit_price ?? 0;
-            
-            foreach ($purchase_items as $item) {
-                $unit_cost = $item->unit_price;
-                
-                // Si la compra está en USD, convertir a PEN usando el tipo de cambio
-                if ($item->purchase->currency_id == 'USD') {
-                    $unit_cost = $unit_cost * ($item->purchase->exchange_rate_sale ?? 1);
-                }
-                
-                $total_cost += ($unit_cost * $item->quantity);
-                $total_quantity += $item->quantity;
-            }
-
-            $weighted_average_cost = $total_quantity > 0 ? $total_cost / $total_quantity : 0;
-
-            return [
-                'success' => true,
-                'weighted_average_cost' => round($weighted_average_cost, 6),
-                'last_purchase_price' => round($last_purchase_price, 6),
-                'total_purchases' => $purchase_items->count(),
-                'total_quantity' => $total_quantity,
-                'currency_symbol' => 'S/',
-                'message' => 'Promedio ponderado calculado exitosamente'
-            ];
-
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'message' => 'Error al calcular el promedio ponderado: ' . $e->getMessage()
-            ];
-        }
+        return \App\Helpers\WeightedAverageHelper::calculateWeightedAverage($item_id);
     }
 
     /**

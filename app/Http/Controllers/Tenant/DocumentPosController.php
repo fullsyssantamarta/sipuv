@@ -220,6 +220,30 @@ class DocumentPosController extends Controller
             $data = $this->mergeData($request);
 //            \Log::debug($request->type_resolution);
 //            \Log::debug(json_encode($data));
+            
+            // Validar precios contra promedio ponderado antes de generar el documento
+            if ($data['electronic'] === true) {
+                $items_to_validate = [];
+                foreach($data['items'] as $row) {
+                    $items_to_validate[] = [
+                        'item_id' => $row['item_id'],
+                        'unit_price' => $row['unit_price']
+                    ];
+                }
+                
+                $validation = \App\Helpers\WeightedAverageHelper::validateDocumentItems($items_to_validate);
+                if (!$validation['valid']) {
+                    return [
+                        'success' => false,
+                        'message' => $validation['message'],
+                        'validation_errors' => $validation['errors'],
+                        'data' => [
+                            'id' => null,
+                        ],
+                    ];
+                }
+            }
+            
             $customer = Person::where('number', $data['customer']['number'])->where('type', 'customers')->firstOrFail();
             $tax_totals = [];
             $invoice_lines = [];

@@ -1,6 +1,6 @@
-# Sistema de Gestión de Costos y Precios de Venta
+# Sistema de Gestión de Costos y Precios de Venta con Validación de Precio Mínimo
 
-Este documento describe la funcionalidad implementada para el manejo de costos promedio ponderado y gestión de precios de venta en el módulo de compras.
+Este documento describe la funcionalidad implementada para el manejo de costos promedio ponderado, gestión de precios de venta y **validación automática de precio mínimo en documentos electrónicos y POS**.
 
 ## 🎯 Funcionalidades Implementadas
 
@@ -20,6 +20,13 @@ Este documento describe la funcionalidad implementada para el manejo de costos p
 - Advertencia visual cuando el precio de compra está por debajo del promedio ponderado
 - Confirmación requerida para precios por debajo del costo promedio
 - Cálculo dinámico de márgenes de ganancia
+
+### 4. **🆕 VALIDACIÓN AUTOMÁTICA EN FACTURACIÓN ELECTRÓNICA Y POS**
+- **Bloqueo automático** de facturas electrónicas cuando el precio de venta es menor al promedio ponderado
+- **Validación en tiempo real** antes de generar el documento
+- Mensaje detallado indicando qué productos tienen precio por debajo del costo
+- Prevención de pérdidas en todas las ventas electrónicas
+- Aplica tanto para Facturas Electrónicas como para Documentos Equivalentes (POS)
 
 ## 📋 Uso de la Funcionalidad
 
@@ -48,9 +55,27 @@ Este documento describe la funcionalidad implementada para el manejo de costos p
 
 ### Backend (Laravel/PHP)
 
+#### Helper: `WeightedAverageHelper.php`
+
+**Clase centralizada para gestión de promedio ponderado:**
+
+1. **`calculateWeightedAverage($item_id)`**
+   - Calcula el promedio ponderado de todas las compras del producto
+   - Convierte automáticamente entre monedas (USD/PEN)
+   - Retorna información completa de costos históricos
+
+2. **`validateMinimumPrice($item_id, $sale_price)`**
+   - Valida que el precio de venta sea mayor o igual al promedio ponderado
+   - Retorna información detallada de validación y márgenes
+
+3. **`validateDocumentItems($items)`**
+   - Valida todos los items de un documento antes de generar factura
+   - Retorna array con errores detallados por producto
+   - Usado en DocumentController y DocumentPosController
+
 #### Controlador: `PurchaseController.php`
 
-**Nuevos métodos:**
+**Métodos:**
 
 1. **`getWeightedAverageCost($item_id)`**
 ```php
@@ -117,6 +142,48 @@ Route::get('/purchases/weighted-average-cost/{item_id}', [PurchaseController::cl
 
 // Actualizar precio de venta
 Route::post('/purchases/update-sale-price', [PurchaseController::class, 'updateSalePrice']);
+```
+
+### Controladores con Validación de Promedio Ponderado
+
+#### 1. `DocumentController.php` (Factcolombia1)
+- **Ubicación**: `modules/Factcolombia1/Http/Controllers/Tenant/DocumentController.php`
+- **Método**: `store(DocumentRequest $request, $invoice_json = NULL)`
+- **Validación**: Antes de iniciar la transacción, valida todos los items del documento
+- **Comportamiento**: Si algún precio está por debajo del promedio ponderado, **rechaza** la factura y muestra mensaje detallado
+
+```php
+// Validación automática antes de generar factura electrónica
+if ($invoice_json === NULL && isset($request->service_invoice['invoice_lines'])) {
+    $validation = \App\Helpers\WeightedAverageHelper::validateDocumentItems($request->service_invoice['invoice_lines']);
+    if (!$validation['valid']) {
+        return [
+            'success' => false,
+            'message' => $validation['message'],
+            'validation_errors' => $validation['errors']
+        ];
+    }
+}
+```
+
+#### 2. `DocumentPosController.php`
+- **Ubicación**: `app/Http/Controllers/Tenant/DocumentPosController.php`
+- **Método**: `store(Request $request)`
+- **Validación**: Valida items antes de enviar a la API de la DIAN
+- **Comportamiento**: Si algún precio está por debajo del promedio ponderado, **bloquea** el documento POS
+
+```php
+// Validación en documentos POS electrónicos
+if ($data['electronic'] === true) {
+    $validation = \App\Helpers\WeightedAverageHelper::validateDocumentItems($items_to_validate);
+    if (!$validation['valid']) {
+        return [
+            'success' => false,
+            'message' => $validation['message'],
+            'validation_errors' => $validation['errors']
+        ];
+    }
+}
 ```
 
 ## 🎨 Interfaz de Usuario
@@ -221,13 +288,18 @@ Route::post('/purchases/update-sale-price', [PurchaseController::class, 'updateS
 - **Información Centralizada**: Todo en una sola vista
 - **Decisiones Informadas**: Conoce costos históricos antes de fijar precios
 - **Eficiencia**: Actualización rápida de precios de venta
-- **Prevención de Pérdidas**: Alertas para precios por debajo del costo
+- **🆕 Prevención Automática de Pérdidas**: Sistema bloquea facturas con precio por debajo del costo
+- **🆕 Protección en Tiempo Real**: Validación tanto en facturación electrónica como en POS
+- **Mensajes Claros**: Información detallada sobre qué productos tienen problemas de precio
 
 ### Para el Negocio
 - **Control de Márgenes**: Visibilidad clara de rentabilidad
 - **Consistencia**: Precios basados en datos históricos reales
-- **Flexibilidad**: Permite ajustes manuales cuando sea necesario
+- **Flexibilidad**: Permite ajustes manuales en el módulo de compras cuando sea necesario
 - **Trazabilidad**: Registro de cambios en precios
+- **🆕 Cero Pérdidas**: Imposible generar facturas con precio de venta por debajo del costo
+- **🆕 Cumplimiento**: Asegura que todas las ventas sean rentables
+- **🆕 Historial de Compras**: Base sólida para cálculo de costos reales
 
 ## 🔮 Posibles Mejoras Futuras
 

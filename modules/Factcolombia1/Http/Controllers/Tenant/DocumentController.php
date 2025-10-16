@@ -585,6 +585,19 @@ class DocumentController extends Controller
     public function store(DocumentRequest $request, $invoice_json = NULL){
         // \Log::debug($invoice_json);
 //        \Log::debug($request->all());
+        
+        // Validar precios contra promedio ponderado antes de iniciar transacción
+        if ($invoice_json === NULL && isset($request->service_invoice['invoice_lines'])) {
+            $validation = \App\Helpers\WeightedAverageHelper::validateDocumentItems($request->service_invoice['invoice_lines']);
+            if (!$validation['valid']) {
+                return [
+                    'success' => false,
+                    'message' => $validation['message'],
+                    'validation_errors' => $validation['errors']
+                ];
+            }
+        }
+        
         DB::connection('tenant')->beginTransaction();
         try {
             if($invoice_json !== NULL)
