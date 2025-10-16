@@ -67,7 +67,7 @@ class ItemRequest extends FormRequest
             // ],
             // 'brand_id' => [
             //     'required_if:is_set,false',
-            ],
+            // ],
             'tax_id' => 'nullable|exists:tenant.co_taxes,id',
             'purchase_tax_id' => 'required|exists:tenant.co_taxes,id',
             
