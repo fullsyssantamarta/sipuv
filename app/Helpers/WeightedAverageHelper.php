@@ -18,11 +18,11 @@ class WeightedAverageHelper
         try {
             // Obtener todas las compras del item ordenadas por fecha
             $purchase_items = PurchaseItem::whereHas('purchase', function($query) {
-                    $query->whereIn('state_type_id', ['05', '09']); // Solo compras procesadas o aceptadas
+                    $query->whereIn('state_type_id', ['01', '05']); // Registrado o Aceptado (excluye rechazadas '09')
                 })
                 ->where('item_id', $item_id)
                 ->with(['purchase' => function($query) {
-                    $query->select('id', 'date_of_issue', 'currency_id', 'exchange_rate_sale');
+                    $query->select('id', 'date_of_issue', 'currency_id');
                 }])
                 ->orderBy('id', 'desc')
                 ->get();
@@ -46,11 +46,7 @@ class WeightedAverageHelper
             foreach ($purchase_items as $item) {
                 $unit_cost = $item->unit_price;
                 
-                // Si la compra está en USD, convertir a PEN usando el tipo de cambio
-                if ($item->purchase->currency_id == 'USD') {
-                    $unit_cost = $unit_cost * ($item->purchase->exchange_rate_sale ?? 1);
-                }
-                
+                // Sumar al costo total ponderado
                 $total_cost += ($unit_cost * $item->quantity);
                 $total_quantity += $item->quantity;
             }
@@ -63,8 +59,7 @@ class WeightedAverageHelper
                 'last_purchase_price' => round($last_purchase_price, 2),
                 'total_purchases' => $purchase_items->count(),
                 'total_quantity' => $total_quantity,
-                'has_purchases' => true,
-                'currency_symbol' => 'S/',
+                'currency_symbol' => '$',
                 'message' => 'Promedio ponderado calculado exitosamente'
             ];
 
